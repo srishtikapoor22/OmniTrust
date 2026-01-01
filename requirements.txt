@@ -1,0 +1,43 @@
+# OmniTrust Azure SDK Dependencies
+# Core Azure AI Services
+azure-ai-face>=1.0.0b1
+azure-ai-speech>=1.40.0
+azure-ai-vision>=1.0.0b1
+azure-openai>=1.12.0
+
+# Azure Machine Learning
+azure-ai-ml>=1.10.0
+azureml-core>=1.53.0
+azureml-mlflow>=1.53.0
+
+# Azure Functions
+azure-functions>=1.18.0
+
+# Azure Identity & Authentication
+azure-identity>=1.15.0
+
+# Azure Storage
+azure-storage-blob>=12.19.0
+
+# Azure Cosmos DB
+azure-cosmos>=4.5.1
+
+# Azure Confidential Ledger
+azure-confidentialledger>=1.0.0b2
+
+# Additional Azure Services (for orchestration, monitoring, etc.)
+azure-keyvault-secrets>=4.7.0
+azure-monitor-opentelemetry>=1.1.0
+azure-applicationinsights>=0.1.1
+
+# Supporting Libraries
+python-dotenv>=1.0.0
+pydantic>=2.5.0
+httpx>=0.25.0
+aiohttp>=3.9.0
+
+# Development & Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+

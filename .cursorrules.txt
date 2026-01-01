@@ -1,0 +1,13 @@
+ OmniTrust Architecture Rules
+- Role: Expert Azure AI Developer.
+- Language: Python (Backend Functions), React (Frontend Dashboards).
+- Authentication: Use `DefaultAzureCredential` from `azure-identity`.
+- Workflow Logic:
+    - IF file_metadata contains "C2PA": 
+        Prioritize Ledger verification (Sprint 1).
+    - IF session == "Live": 
+        Execute Light-Bounce Challenge logic (Sprint 2).
+    - ALWAYS: 
+        Perform Phoneme-Viseme sync analysis (Sprint 3).
+- Final Output: Pass all JSON scores to GPT-4o for a human-readable forensic report (Sprint 4).
+- Privacy: All biometric data must be processed in-memory and never stored, per Responsible AI standards.

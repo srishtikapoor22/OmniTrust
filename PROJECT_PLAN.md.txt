@@ -1,0 +1,157 @@
+OmniTrust: Unified Cursor AI Implementation Roadmap
+1. Project Intent & "Zero-Trust" Logic
+OmniTrust is a proactive media ecosystem that replaces passive deepfake detection with active physical and biological verification. It builds a multimodal platform that anchors media to a tamper-proof ledger to prove authenticity for journalists, lawyers, and corporate entities.
+Core Principle: "Guilty Until Proven Human." The software must force a physical response from the user (e.g., Light-Bounce) or prove adherence to physical laws (e.g., Biological Sync). This zero-trust approach assumes every digital feed is potentially compromised until verified through hardware-backed physics and biological markers.
+Key Objectives:
+Address the erosion of digital trust by providing verifiable chain of custody.
+Integrate real-time and post-capture verification for high-stakes use cases.
+Ensure scalability and privacy compliance in Azure ecosystem.
+Scope:
+Support for live sessions, uploaded media, and C2PA-compliant footage.
+Deployment on Azure with serverless orchestration.
+Modular design for iterative development via Cursor.
+2. Problem Statements: The Erosion of Digital Trust
+(Retained and updated from previous doc for completeness)
+The rise of generative AI has made traditional media verification obsolete. OmniTrust addresses:
+The Detection Gap: Passive checks are evaded; introduce active Light-Bounce for physical proof.
+The Multimodal Blind Spot: Siloed analysis misses hybrids; sync audio-video biologically.
+The Chain of Custody Problem: Metadata insufficient; use immutable ledger for "Birth Certificates."
+The Lack of Forensic Logic: Black-box flags; provide explainable reports via AI.
+3. Solution: OmniTrust Protocol
+OmniTrust acts as a proactive, multimodal verification layer, using "Guilty Until Proven Human" logic. It integrates hardware-backed physics and biological markers for authenticity.
+Core Features:
+Active "Light-Bounce" Verification: Flash RGB colors and analyze skin reflections to detect 2D fakes.
+Biological Cross-Modal Sync: Align phonemes and visemes within 30ms threshold.
+The "Birth Certificate": Anchor SHA-256 hashes to immutable ledger.
+Forensic Reporting: Translate technical data into human-readable reports.
+Environmental Triangulation: Validate physics like shadows vs. solar data.
+Integrated Microsoft AI Stack (Defense-in-Depth Architecture):
+For Cursor to operate correctly, integrate these core Azure services:
+Azure AI Face (The "Physics Guard"):
+Function: Executes PassiveActive Liveness API for "Light-Bounce" challenge.
+Logic: Flashes RGB colors and analyzes pixel-level reflections on skin pores to expose 2D/digital injections.
+Azure AI Speech & Vision (The "Sync Engine"):
+Function: Uses Whisper (Speech) for phoneme extraction and Spatial Analysis (Vision) for viseme tracking.
+Threshold: Flags "Multimodal Mismatch" if audio plosives (P/B sounds) delay from lip compression by >30ms.
+Azure Confidential Ledger (The "Birth Certificate"):
+Function: Anchors SHA-256 hashes of raw video and metadata to an immutable Intel SGX enclave.
+Logic: Creates a permanent, mathematically unchangeable "Truth Receipt."
+Azure OpenAI GPT-4o (The "Forensic Brain"):
+Function: Transforms raw JSON data (latency, liveness scores, ledger matches) into human-readable forensic reports.
+Logic: Acts as a Digital Forensic Investigator to explain why a file was flagged.
+Additional Microsoft AI Services (Minimum of Two Beyond Core):
+Azure Machine Learning: For training custom models on anomaly detection (e.g., fine-tuning "Digital Scars" like latency or noise patterns).
+Azure AI Foundry: For orchestrating AI workflows, building custom agents for automated verification pipelines, and modular integration of services like Face and Speech.
+These services operate end-to-end: Azure AI Foundry orchestrates calls to Face/Speech/Vision, Machine Learning scores anomalies, and OpenAI generates reports.
+4. End-to-End Workflow
+The workflow follows zero-trust logic, orchestrated via Azure Functions. It assumes media is guilty until proven via physical/biological checks and ledger anchoring.
+High-Level Architecture:
+Ingestion: Azure Blob Storage with event triggers.
+Processing: Azure Functions/AI Foundry for orchestration.
+Verification: Multimodal AI analysis and ledger checks.
+Output: Reports in Azure Cosmos DB, notifications via Azure Notification Hubs.
+Diagram Description:
+Flowchart:
+Media Input → Blob Storage.
+Trigger Function → Hash Computation.
+Branch: C2PA? → Ledger Anchor; Live? → Light-Bounce; Else → Full Pipeline.
+AI Analysis: Face (Liveness), Speech/Vision (Sync), Machine Learning (Anomalies).
+Report: OpenAI Synthesis.
+Output: Certificate/Alert.
+Detailed Workflow Steps:
+Media Capture/Ingestion:
+Capture via camera or upload; store in Azure Blob.
+Initial Handshake and Hashing:
+Compute SHA-256 hash.
+If C2PA: Extract manifest (GPS, Hardware ID, Timestamp) and anchor to Confidential Ledger.
+Multimodal Verification Pipeline:
+Liveness (Live Mode): Azure AI Face for Light-Bounce (RGB flashes, reflection analysis).
+Audio/Video Sync: Azure AI Speech for phonemes; Azure AI Vision for visemes; flag if >30ms mismatch.
+Environmental/Anomaly Check: Azure AI Vision for triangulation; Azure Machine Learning for custom scoring.
+Integrity: Compare hash to ledger.
+Forensic Analysis and Reporting:
+Aggregate JSON data from services.
+Use Azure OpenAI GPT-4o to generate reports explaining flags (e.g., "Synthetic Injection due to failed reflection pattern").
+Store in Cosmos DB.
+Output and Notification:
+Issue Veritas Certificate if passed.
+Flag alerts for mismatches (e.g., "Tamper Alert" or "Multimodal Mismatch").
+Error Handling & Privacy:
+Retries for AI calls; logs to Azure Monitor.
+Process biometrics in-memory only; no storage per Responsible AI standards.
+Performance:
+Parallel processing via Azure Durable Functions/AI Foundry.
+Scale for real-time (e.g., Teams integration).
+5. Workflow Scenarios
+Scenario 1: Professional Journalists (C2PA Handshake)
+Input: Media from C2PA-compliant cameras (Sony/Nikon) with hardware signatures.
+Workflow:
+Ingest to Azure Blob Storage.
+Extract C2PA manifest.
+Anchor hash to Azure Confidential Ledger.
+Verify by comparing live hash to ledger for zero-tampering proof.
+Scenario 2: General Users (Native Phone Camera Uploads)
+Input: Video from non-secure app.
+Workflow:
+Azure AI Vision for Environmental Triangulation (shadows vs. solar position).
+Biological Marker Scan (lip-sync, sensor noise) via Sync Engine.
+GPT-4o reviews anomalies; if passes, anchor as "Verified Third-Party" to Ledger.
+Scenario 3: Real-Time Corporate Calls (The Kill-Switch)
+Input: Live feed in Microsoft Teams/Web session.
+Workflow:
+Initiate Light-Bounce Challenge (RGB screen shifts).
+Real-time analysis via Azure AI Face for skin reflections.
+Flag "Synthetic Injection" if reflection fails physical test.
+6. Tech Stack & Implementation Guidelines
+Core Stack:
+Orchestration: Azure Functions (Python/Node.js); Azure AI Foundry for workflow agents.
+Storage: Azure Blob, Azure Cosmos DB.
+Integrity: Azure Confidential Ledger.
+AI Services: As in Section 3.
+Infra: Terraform/Bicep for provisioning.
+Monitoring/Security: Azure Application Insights, Azure AD, Key Vault.
+Tech Workflow for Coding:
+Provision Azure resources via /infra/.
+Develop services in /src/services/.
+Integrate SDKs: azure-ai-face, azure-ai-speech, azure-ai-vision, azure-openai, azureml-sdk.
+Use Azure Machine Learning for custom models (e.g., train on datasets for mismatch detection).
+Testing: Mock inputs, end-to-end simulations.
+Data Models:
+Media Object:{ "id": string, "hash": string, "c2pa_manifest": object, "status": string }
+Report:{ "summary": string, "flags": array of { "type": string, "detail": string } }
+API Endpoints:
+POST /verify: Upload and trigger workflow.
+GET /report/{id}: Retrieve forensic report.
+7. Target Audience & Use Cases
+Corporate Sector: Secure calls for financial authorizations.
+Journalists: Verifiable field reporting.
+Legal Professionals: Chain of custody for evidence.
+8. Cursor Coding Instructions (.cursorrules)
+text
+# OmniTrust Architecture Rules
+- Role: Expert Azure AI Developer.
+- Language: Python (Backend Functions), React (Frontend Dashboards).
+- Authentication: Use `DefaultAzureCredential` from `azure-identity`.
+- Workflow Logic:
+    - IF file_metadata contains "C2PA": 
+        Prioritize Ledger verification (Sprint 1).
+    - IF session == "Live": 
+        Execute Light-Bounce Challenge logic (Sprint 2).
+    - ALWAYS: 
+        Perform Phoneme-Viseme sync analysis (Sprint 3).
+- Final Output: Pass all JSON scores to GPT-4o for a human-readable forensic report (Sprint 4).
+- Privacy: All biometric data must be processed in-memory and never stored, per Responsible AI standards.
+9. Directory Structure for Cursor Initialization
+To ensure modular building:
+/src/services/azure_face.py (Liveness & Light-Bounce challenges)
+/src/services/sync_engine.py (Whisper + Vision mapping; 30ms threshold)
+/src/services/ledger.py (Confidential Ledger hashing and retrieval)
+/src/forensics/reporter.py (GPT-4o forensic report generator)
+/infra/ (Terraform/Bicep for Azure AI Foundry, Face API, and Ledger)
+10. Additional Requirements for Cursor Implementation
+Code Structure: Monorepo with sprints for iterative dev (e.g., Sprint 1: Ledger, Sprint 2: Liveness).
+Dependencies: azure-functions, azure-ai-vision, azure-openai, azureml-sdk, etc.
+Best Practices: Async for real-time; handle 30ms thresholds precisely.
+Scalability: Design for enterprise loads.
+Future Enhancements: AI Foundry agents for autonomous checks.
+This updated document provides a unified roadmap for implementing OmniTrust using Cursor. Proceed with infra setup first, then core services.
