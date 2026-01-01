@@ -1,0 +1,78 @@
+{
+  "entries": [
+    {
+      "transaction_id": "txn_20260101_122537_579567",
+      "blob_name": "test/test_file_20260101_115755.txt",
+      "hash": "92eb3ca1ebc0035b4726250294c1df959a99c864b0e11a3ffffbd1cefc03b593",
+      "timestamp": "2026-01-01T12:25:37.579589+00:00",
+      "size": 260,
+      "last_modified": "2026-01-01T11:57:55+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x1D0B5E68E178550\"",
+      "status": "anchored"
+    },
+    {
+      "transaction_id": "txn_20260101_122537_587656",
+      "blob_name": "test/test_file_20260101_115857.txt",
+      "hash": "d5a572baf956a1a643eb333f82af83013daf277fca8d221c1cd5544248a75d5c",
+      "timestamp": "2026-01-01T12:25:37.587682+00:00",
+      "size": 265,
+      "last_modified": "2026-01-01T11:58:57+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x268E5C59C72C420\"",
+      "status": "anchored"
+    },
+    {
+      "transaction_id": "txn_20260101_123249_902315",
+      "blob_name": "pipeline_test/file1_20260101_123249.txt",
+      "hash": "2e2ae90cf4946f6289178938229e56ea0378f98b6cc18c56debdef6e94c77b3a",
+      "timestamp": "2026-01-01T12:32:49.902341+00:00",
+      "size": 177,
+      "last_modified": "2026-01-01T12:32:49+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x21C5640805472C0\"",
+      "status": "anchored"
+    },
+    {
+      "transaction_id": "txn_20260101_123249_909804",
+      "blob_name": "pipeline_test/file2_20260101_123249.txt",
+      "hash": "89039b409a9b4ee0728983c3863fa49f8dc4fe709a77789a2cbeb1996f495b7a",
+      "timestamp": "2026-01-01T12:32:49.909828+00:00",
+      "size": 241,
+      "last_modified": "2026-01-01T12:32:49+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x222486320EBAFA0\"",
+      "status": "anchored"
+    },
+    {
+      "transaction_id": "txn_20260101_123408_841360",
+      "blob_name": "pipeline_test/file1_20260101_123408.txt",
+      "hash": "ebf8906cb5d4f63bc88c1054d5a4f452d243ff37c8b0ed9f48e9edf7b3a0799a",
+      "timestamp": "2026-01-01T12:34:08.841386+00:00",
+      "size": 177,
+      "last_modified": "2026-01-01T12:34:08+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x23B3BE59E893AA0\"",
+      "status": "anchored"
+    },
+    {
+      "transaction_id": "txn_20260101_123408_849911",
+      "blob_name": "pipeline_test/file2_20260101_123408.txt",
+      "hash": "915ec244fe1f844c30f44176098e59abd5e0f606beb5d148ba59dae575dd4fc5",
+      "timestamp": "2026-01-01T12:34:08.849935+00:00",
+      "size": 241,
+      "last_modified": "2026-01-01T12:34:08+00:00",
+      "content_type": "application/octet-stream",
+      "etag": "\"0x1C052EEC0FFE410\"",
+      "status": "anchored"
+    }
+  ],
+  "processed_blobs": [
+    "test/test_file_20260101_115755.txt",
+    "pipeline_test/file1_20260101_123249.txt",
+    "pipeline_test/file1_20260101_123408.txt",
+    "test/test_file_20260101_115857.txt",
+    "pipeline_test/file2_20260101_123408.txt",
+    "pipeline_test/file2_20260101_123249.txt"
+  ]
+}

@@ -1,348 +1,415 @@
 """
-OmniTrust Ledger Service (Sprint 1)
-Azure Confidential Ledger integration for immutable hash anchoring.
+OmniTrust Ledger Service (Sprint 1 - Local Mock)
+Azure Blob Storage monitoring and hash computation service.
 
-Implements "Birth Certificate" functionality by anchoring SHA-256 hashes
-of raw video and metadata to an immutable Intel SGX enclave.
+Monitors the 'omnitrust-raw-media' container for new files,
+computes SHA-256 hashes, and stores them in a local mock ledger
+file to simulate Azure Confidential Ledger functionality.
 """
 
 import hashlib
 import json
 import os
-from datetime import datetime
-from typing import Optional, Dict, Any, Union, BinaryIO
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional, Dict, Any, List, Set
 
-from azure.identity import DefaultAzureCredential
-from azure.confidentialledger import ConfidentialLedgerClient
-from azure.confidentialledger.certificate import ConfidentialLedgerCertificateClient
-from azure.core.exceptions import HttpResponseError, ServiceRequestError
+from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 
 
-class LedgerService:
+def get_connection_string() -> str:
     """
-    Service for anchoring media hashes to Azure Confidential Ledger.
+    Get the Azure Storage connection string.
     
-    Creates permanent, mathematically unchangeable "Truth Receipts" by
-    storing SHA-256 hashes in an immutable ledger backed by Intel SGX enclaves.
+    For local development, uses the full Azurite connection string.
+    For production, would read from environment variables or Azure Key Vault.
+    
+    Returns:
+        Connection string for Azure Storage.
+    """
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+    
+    if not connection_string:
+        # Use full development storage connection string for local Azurite
+        connection_string = (
+            "DefaultEndpointsProtocol=http;"
+            "AccountName=devstoreaccount1;"
+            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+            "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+            "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+            "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;"
+        )
+    
+    return connection_string
+
+
+class LedgerMonitorService:
+    """
+    Service for monitoring blob storage and anchoring media hashes.
+    
+    Monitors the 'omnitrust-raw-media' container for new files,
+    computes SHA-256 hashes, and stores them in a local mock ledger file.
+    This simulates the Azure Confidential Ledger "Birth Certificate" functionality.
     """
     
     def __init__(
         self,
-        ledger_name: Optional[str] = None,
-        ledger_url: Optional[str] = None,
-        identity_url: str = "https://identity.confidential-ledger.core.azure.com"
+        container_name: str = "omnitrust-raw-media",
+        connection_string: Optional[str] = None,
+        ledger_file: str = "mock_ledger.json"
     ):
         """
-        Initialize the Ledger Service.
+        Initialize the Ledger Monitor Service.
         
         Args:
-            ledger_name: Name of the Azure Confidential Ledger instance.
-                        If not provided, reads from LEDGER_NAME env var.
-            ledger_url: Full URL of the ledger endpoint.
-                       If not provided, constructs from ledger_name.
-            identity_url: Identity service URL for certificate retrieval.
+            container_name: Name of the blob container to monitor.
+            connection_string: Azure Storage connection string.
+                            If not provided, uses get_connection_string().
+            ledger_file: Path to the local JSON file for storing ledger entries.
         """
-        self.ledger_name = ledger_name or os.getenv("LEDGER_NAME")
-        if not self.ledger_name and not ledger_url:
-            raise ValueError("ledger_name or LEDGER_NAME env var is required")
+        self.container_name = container_name
+        self.connection_string = connection_string or get_connection_string()
+        self.ledger_file = Path(ledger_file)
         
-        self.ledger_url = ledger_url or f"https://{self.ledger_name}.confidential-ledger.azure.com"
-        self.identity_url = identity_url
-        self.credential = DefaultAzureCredential()
-        self._ledger_client: Optional[ConfidentialLedgerClient] = None
-    
-    def _get_ledger_client(self) -> ConfidentialLedgerClient:
-        """
-        Get or create the Confidential Ledger client with certificate handling.
-        
-        Returns:
-            Initialized ConfidentialLedgerClient instance.
-        """
-        if self._ledger_client is not None:
-            return self._ledger_client
-        
-        # Retrieve the ledger's TLS certificate
-        cert_client = ConfidentialLedgerCertificateClient(self.identity_url)
-        network_identity = cert_client.get_ledger_identity(ledger_id=self.ledger_name)
-        ledger_tls_cert = network_identity['ledgerTlsCertificate']
-        
-        # Save certificate to temporary file (or use in-memory for production)
-        # For production, consider caching or using certificate store
-        cert_file_path = os.path.join(os.path.dirname(__file__), ".ledger_cert.pem")
-        with open(cert_file_path, "w") as cert_file:
-            cert_file.write(ledger_tls_cert)
-        
-        # Initialize the Confidential Ledger client
-        self._ledger_client = ConfidentialLedgerClient(
-            endpoint=self.ledger_url,
-            credential=self.credential,
-            ledger_certificate_path=cert_file_path
+        # Initialize blob service client
+        self.blob_service_client = BlobServiceClient.from_connection_string(
+            self.connection_string
+        )
+        self.container_client = self.blob_service_client.get_container_client(
+            container_name
         )
         
-        return self._ledger_client
+        # Load existing ledger to track processed blobs
+        self._ledger_data = self._load_ledger()
     
     @staticmethod
-    def compute_sha256(file_input: Union[str, Path, bytes, BinaryIO]) -> str:
+    def compute_sha256(file_input: bytes) -> str:
         """
-        Compute SHA-256 hash of a video file or bytes.
-        
-        Supports multiple input types:
-        - File path (str or Path)
-        - Raw bytes
-        - File-like object (BinaryIO)
+        Compute SHA-256 hash of file bytes.
         
         Args:
-            file_input: Video file path, bytes, or file-like object.
+            file_input: File content as bytes.
         
         Returns:
             Hexadecimal SHA-256 hash string.
         """
         sha256_hash = hashlib.sha256()
-        
-        if isinstance(file_input, (str, Path)):
-            # File path
-            with open(file_input, "rb") as f:
-                for byte_block in iter(lambda: f.read(8192), b""):
-                    sha256_hash.update(byte_block)
-        elif isinstance(file_input, bytes):
-            # Raw bytes
-            sha256_hash.update(file_input)
-        else:
-            # File-like object (BinaryIO)
-            # Read from current position, don't seek to start
-            for byte_block in iter(lambda: file_input.read(8192), b""):
-                sha256_hash.update(byte_block)
-        
+        sha256_hash.update(file_input)
         return sha256_hash.hexdigest()
     
-    def anchor_hash(
-        self,
-        video_hash: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        c2pa_manifest: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    def _load_ledger(self) -> Dict[str, Any]:
         """
-        Anchor a video hash to the Confidential Ledger (Sprint 1).
-        
-        Creates an immutable ledger entry containing:
-        - SHA-256 hash of the video
-        - Optional C2PA manifest (GPS, Hardware ID, Timestamp)
-        - Additional metadata
-        
-        Args:
-            video_hash: SHA-256 hash of the video file.
-            metadata: Optional additional metadata to store.
-            c2pa_manifest: Optional C2PA manifest data (GPS, Hardware ID, Timestamp).
+        Load the mock ledger JSON file.
         
         Returns:
-            Dictionary containing:
-            - transaction_id: Ledger transaction ID
-            - entry_id: Ledger entry ID
-            - timestamp: UTC timestamp of the anchor
-            - hash: The anchored hash (for verification)
+            Dictionary containing ledger data with structure:
+            {
+                "entries": [
+                    {
+                        "transaction_id": str,
+                        "blob_name": str,
+                        "hash": str,
+                        "timestamp": str,
+                        "size": int,
+                        "last_modified": str
+                    }
+                ],
+                "processed_blobs": [str]  # List of blob names already processed
+            }
         """
-        ledger_client = self._get_ledger_client()
+        if self.ledger_file.exists():
+            try:
+                with open(self.ledger_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Warning: Could not load ledger file: {e}. Creating new ledger.")
         
-        # Prepare ledger entry with hash and metadata
-        entry_data = {
-            "hash": video_hash,
-            "type": "media_verification",
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+        # Return default structure
+        return {
+            "entries": [],
+            "processed_blobs": []
         }
-        
-        # Add C2PA manifest if provided (Sprint 1: C2PA Handshake)
-        if c2pa_manifest:
-            entry_data["c2pa_manifest"] = c2pa_manifest
-            entry_data["source"] = "c2pa_compliant"
-        
-        # Add additional metadata
-        if metadata:
-            entry_data["metadata"] = metadata
-        
-        # Create ledger entry
+    
+    def _save_ledger(self):
+        """Save the ledger data to the JSON file."""
         try:
-            append_result = ledger_client.create_ledger_entry(entry=entry_data)
+            # Ensure directory exists
+            self.ledger_file.parent.mkdir(parents=True, exist_ok=True)
             
-            transaction_id = append_result['transactionId']
-            entry_id = append_result.get('entryId', transaction_id)
+            with open(self.ledger_file, 'w', encoding='utf-8') as f:
+                json.dump(self._ledger_data, f, indent=2, ensure_ascii=False)
+        except IOError as e:
+            raise RuntimeError(f"Failed to save ledger file: {e}") from e
+    
+    def _get_processed_blobs(self) -> Set[str]:
+        """Get set of blob names that have already been processed."""
+        return set(self._ledger_data.get("processed_blobs", []))
+    
+    def _mark_blob_processed(self, blob_name: str):
+        """Mark a blob as processed in the ledger."""
+        processed = self._get_processed_blobs()
+        processed.add(blob_name)
+        self._ledger_data["processed_blobs"] = list(processed)
+    
+    def list_new_blobs(self) -> List[Dict[str, Any]]:
+        """
+        List blobs in the container that haven't been processed yet.
+        
+        Returns:
+            List of blob metadata dictionaries for new blobs.
+        """
+        try:
+            processed_blobs = self._get_processed_blobs()
+            new_blobs = []
+            
+            # List all blobs in the container
+            blobs = self.container_client.list_blobs()
+            
+            for blob in blobs:
+                # Skip if already processed
+                if blob.name not in processed_blobs:
+                    new_blobs.append({
+                        "name": blob.name,
+                        "size": blob.size,
+                        "last_modified": blob.last_modified.isoformat() if blob.last_modified else None,
+                        "content_type": blob.content_settings.content_type if blob.content_settings else None
+                    })
+            
+            return new_blobs
+        except HttpResponseError as e:
+            raise RuntimeError(f"Failed to list blobs: {e}") from e
+    
+    def process_blob(self, blob_name: str) -> Dict[str, Any]:
+        """
+        Process a single blob: download, compute hash, and store in ledger.
+        
+        Args:
+            blob_name: Name of the blob to process.
+        
+        Returns:
+            Dictionary containing transaction_id, hash, and metadata.
+        """
+        try:
+            # Get blob client
+            blob_client = self.container_client.get_blob_client(blob_name)
+            
+            # Get blob properties
+            blob_props = blob_client.get_blob_properties()
+            
+            # Download blob content
+            blob_data = blob_client.download_blob().readall()
+            
+            # Compute SHA-256 hash
+            video_hash = self.compute_sha256(blob_data)
+            
+            # Generate transaction ID (simulating ledger transaction)
+            transaction_id = f"txn_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S_%f')}"
+            timestamp = datetime.now(timezone.utc).isoformat()
+            
+            # Create ledger entry
+            entry = {
+                "transaction_id": transaction_id,
+                "blob_name": blob_name,
+                "hash": video_hash,
+                "timestamp": timestamp,
+                "size": blob_props.size,
+                "last_modified": blob_props.last_modified.isoformat() if blob_props.last_modified else None,
+                "content_type": blob_props.content_settings.content_type if blob_props.content_settings else None,
+                "etag": blob_props.etag,
+                "status": "anchored"
+            }
+            
+            # Add to ledger
+            self._ledger_data["entries"].append(entry)
+            self._mark_blob_processed(blob_name)
+            self._save_ledger()
             
             return {
                 "transaction_id": transaction_id,
-                "entry_id": entry_id,
-                "timestamp": entry_data["timestamp"],
+                "entry_id": transaction_id,
+                "blob_name": blob_name,
                 "hash": video_hash,
+                "timestamp": timestamp,
                 "status": "anchored"
             }
-        except (HttpResponseError, ServiceRequestError) as e:
-            raise RuntimeError(f"Failed to anchor hash to ledger: {str(e)}") from e
+            
+        except (HttpResponseError, ResourceNotFoundError) as e:
+            raise RuntimeError(f"Failed to process blob '{blob_name}': {e}") from e
     
-    def anchor_video_file(
-        self,
-        video_file: Union[str, Path, bytes, BinaryIO],
-        metadata: Optional[Dict[str, Any]] = None,
-        c2pa_manifest: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    def monitor_and_process(self) -> List[Dict[str, Any]]:
         """
-        Compute hash and anchor a video file to the ledger in one operation.
+        Monitor the container for new blobs and process them.
         
-        This is the primary method for Sprint 1 workflow.
-        
-        Args:
-            video_file: Video file path, bytes, or file-like object.
-            metadata: Optional additional metadata.
-            c2pa_manifest: Optional C2PA manifest data.
+        This is the main method for continuous monitoring. It finds all
+        unprocessed blobs, computes their hashes, and stores them in the ledger.
         
         Returns:
-            Dictionary containing transaction_id, entry_id, hash, and status.
+            List of processing results for each new blob.
         """
-        # Compute SHA-256 hash
-        video_hash = self.compute_sha256(video_file)
+        results = []
         
-        # Anchor to ledger
-        return self.anchor_hash(
-            video_hash=video_hash,
-            metadata=metadata,
-            c2pa_manifest=c2pa_manifest
-        )
+        # Find new blobs
+        new_blobs = self.list_new_blobs()
+        
+        if not new_blobs:
+            return results
+        
+        print(f"Found {len(new_blobs)} new blob(s) to process")
+        
+        # Process each new blob
+        for blob_info in new_blobs:
+            blob_name = blob_info["name"]
+            try:
+                print(f"Processing blob: {blob_name}")
+                result = self.process_blob(blob_name)
+                results.append(result)
+                print(f"  [OK] Hash computed: {result['hash'][:16]}... (txn: {result['transaction_id']})")
+            except Exception as e:
+                print(f"  [ERROR] Failed to process {blob_name}: {e}")
+                results.append({
+                    "blob_name": blob_name,
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        return results
     
-    def verify_hash(
-        self,
-        video_hash: str,
-        transaction_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def get_entry_by_hash(self, video_hash: str) -> Optional[Dict[str, Any]]:
         """
-        Verify a video hash exists in the ledger (zero-tampering proof).
+        Find a ledger entry by hash (for verification).
         
-        Used for integrity checks by comparing live hash to ledger entries.
+        Args:
+            video_hash: SHA-256 hash to search for.
+        
+        Returns:
+            Ledger entry dictionary if found, None otherwise.
+        """
+        for entry in self._ledger_data.get("entries", []):
+            if entry.get("hash") == video_hash:
+                return entry
+        return None
+    
+    def get_entry_by_blob_name(self, blob_name: str) -> Optional[Dict[str, Any]]:
+        """
+        Find a ledger entry by blob name.
+        
+        Args:
+            blob_name: Name of the blob to search for.
+        
+        Returns:
+            Ledger entry dictionary if found, None otherwise.
+        """
+        for entry in self._ledger_data.get("entries", []):
+            if entry.get("blob_name") == blob_name:
+                return entry
+        return None
+    
+    def verify_hash(self, video_hash: str) -> Dict[str, Any]:
+        """
+        Verify if a hash exists in the ledger (zero-tampering proof).
         
         Args:
             video_hash: SHA-256 hash to verify.
-            transaction_id: Optional transaction ID to check specific entry.
         
         Returns:
-            Dictionary containing:
-            - verified: Boolean indicating if hash was found
-            - transaction_id: Transaction ID if found
-            - entry_id: Entry ID if found
-            - timestamp: Timestamp of the ledger entry if found
+            Dictionary with verification result.
         """
-        ledger_client = self._get_ledger_client()
+        entry = self.get_entry_by_hash(video_hash)
         
-        try:
-            if transaction_id:
-                # Get specific entry by transaction ID
-                entry = ledger_client.get_ledger_entry(transaction_id=transaction_id)
-                entry_data = entry.get('entry', {})
-                
-                if isinstance(entry_data, str):
-                    entry_data = json.loads(entry_data)
-                
-                stored_hash = entry_data.get('hash')
-                
-                if stored_hash == video_hash:
-                    return {
-                        "verified": True,
-                        "transaction_id": transaction_id,
-                        "entry_id": entry.get('entryId'),
-                        "timestamp": entry_data.get('timestamp'),
-                        "status": "integrity_confirmed"
-                    }
-            else:
-                # Search for hash in recent entries (limited to recent transactions)
-                # Note: Full ledger scan requires pagination and may be expensive
-                # For production, consider maintaining an index or using query patterns
-                current_state = ledger_client.get_current_ledger_entry()
-                # This is a simplified check - production may need more sophisticated search
-                
+        if entry:
+            return {
+                "verified": True,
+                "transaction_id": entry.get("transaction_id"),
+                "entry_id": entry.get("transaction_id"),
+                "blob_name": entry.get("blob_name"),
+                "timestamp": entry.get("timestamp"),
+                "status": "integrity_confirmed"
+            }
+        else:
             return {
                 "verified": False,
                 "status": "hash_not_found"
             }
-        except (HttpResponseError, ServiceRequestError) as e:
-            raise RuntimeError(f"Failed to verify hash in ledger: {str(e)}") from e
     
-    def extract_c2pa_metadata(
-        self,
-        video_file: Union[str, Path, bytes]
-    ) -> Optional[Dict[str, Any]]:
+    def get_ledger_stats(self) -> Dict[str, Any]:
         """
-        Extract C2PA manifest metadata from video file.
-        
-        This is a placeholder for C2PA manifest extraction.
-        In production, use a C2PA library (e.g., c2patool) to extract:
-        - GPS coordinates
-        - Hardware ID (camera serial number)
-        - Timestamp
-        - Other C2PA assertions
-        
-        Args:
-            video_file: Video file path or bytes.
+        Get statistics about the ledger.
         
         Returns:
-            Dictionary with C2PA manifest data, or None if not C2PA-compliant.
+            Dictionary with ledger statistics.
         """
-        # TODO: Integrate with C2PA library (e.g., c2patool or c2pa-python)
-        # For Sprint 1, this is a placeholder structure
-        # Actual implementation would use:
-        # from c2pa import read_file
-        # manifest = read_file(video_file)
-        # return {
-        #     "gps": manifest.get("gps"),
-        #     "hardware_id": manifest.get("hardware_id"),
-        #     "timestamp": manifest.get("timestamp"),
-        #     "camera_make": manifest.get("camera_make"),
-        #     "camera_model": manifest.get("camera_model")
-        # }
+        entries = self._ledger_data.get("entries", [])
+        processed = len(self._get_processed_blobs())
         
-        # Placeholder: Return None to indicate no C2PA manifest found
-        # This allows the workflow to proceed with standard verification
-        return None
+        return {
+            "total_entries": len(entries),
+            "processed_blobs": processed,
+            "ledger_file": str(self.ledger_file),
+            "container_name": self.container_name,
+            "latest_entry": entries[-1] if entries else None
+        }
 
 
-# Convenience functions for direct usage
-def anchor_video_to_ledger(
-    video_file: Union[str, Path, bytes, BinaryIO],
-    ledger_name: Optional[str] = None,
-    c2pa_manifest: Optional[Dict[str, Any]] = None,
-    metadata: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+# Convenience function for one-time monitoring
+def monitor_and_process_blobs(
+    container_name: str = "omnitrust-raw-media",
+    ledger_file: str = "mock_ledger.json"
+) -> List[Dict[str, Any]]:
     """
-    Convenience function to anchor a video file to the ledger.
+    Convenience function to monitor and process new blobs.
     
     Args:
-        video_file: Video file path, bytes, or file-like object.
-        ledger_name: Name of the Azure Confidential Ledger instance.
-        c2pa_manifest: Optional C2PA manifest data.
-        metadata: Optional additional metadata.
+        container_name: Name of the blob container to monitor.
+        ledger_file: Path to the local JSON file for storing ledger entries.
     
     Returns:
-        Dictionary with transaction_id, entry_id, hash, and status.
+        List of processing results.
     """
-    service = LedgerService(ledger_name=ledger_name)
-    return service.anchor_video_file(
-        video_file=video_file,
-        metadata=metadata,
-        c2pa_manifest=c2pa_manifest
+    service = LedgerMonitorService(
+        container_name=container_name,
+        ledger_file=ledger_file
     )
+    return service.monitor_and_process()
 
 
-def verify_video_hash(
-    video_hash: str,
-    transaction_id: Optional[str] = None,
-    ledger_name: Optional[str] = None
-) -> Dict[str, Any]:
+if __name__ == "__main__":
     """
-    Convenience function to verify a video hash in the ledger.
-    
-    Args:
-        video_hash: SHA-256 hash to verify.
-        transaction_id: Optional transaction ID.
-        ledger_name: Name of the Azure Confidential Ledger instance.
-    
-    Returns:
-        Dictionary with verification result.
+    Run the monitor service as a standalone script.
     """
-    service = LedgerService(ledger_name=ledger_name)
-    return service.verify_hash(video_hash=video_hash, transaction_id=transaction_id)
-
+    import sys
+    
+    print("=" * 60)
+    print("OmniTrust Ledger Monitor Service")
+    print("=" * 60)
+    
+    try:
+        service = LedgerMonitorService()
+        
+        # Show current stats
+        stats = service.get_ledger_stats()
+        print(f"\nLedger Stats:")
+        print(f"  Total entries: {stats['total_entries']}")
+        print(f"  Processed blobs: {stats['processed_blobs']}")
+        print(f"  Ledger file: {stats['ledger_file']}")
+        
+        # Monitor and process new blobs
+        print(f"\nMonitoring container '{service.container_name}'...")
+        results = service.monitor_and_process()
+        
+        if results:
+            print(f"\n[SUCCESS] Processed {len(results)} blob(s)")
+        else:
+            print("\n[INFO] No new blobs to process")
+        
+        # Show updated stats
+        stats = service.get_ledger_stats()
+        print(f"\nUpdated Stats:")
+        print(f"  Total entries: {stats['total_entries']}")
+        print(f"  Processed blobs: {stats['processed_blobs']}")
+        
+        sys.exit(0)
+        
+    except Exception as e:
+        print(f"\n[ERROR] {type(e).__name__}: {e}")
+        sys.exit(1)
